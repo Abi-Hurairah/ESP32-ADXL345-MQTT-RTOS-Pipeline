@@ -1,6 +1,3 @@
-# esp-idf-adxl345-i2c-driver
-Robust and native I2C driver for ADXL345 on ESP32. Implements 16-bit burst reads and resilient error handling for production environments.
-
 # Project Overview: Robust ADXL345 I2C Driver
 A modular and robust driver for ADXL345 3-Axis Accelerometer with the native ESP-IDF I2C Master APIE. The driver utilizes the ADXL345's auto-increment feature through the internal pointer shift from register 0x32 to register 0x37 in the ADXL345 to read all three axes of 16-bit acceleration data in a single I2C burst transaction.
 
