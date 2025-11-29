@@ -1,0 +1,22 @@
+--- Build Artifacts ---
+
+/build/
+/managed_components/
+/esp-idf/
+*.bin
+*.elf
+*.map
+*.o
+*.obj
+
+--- Configuration Files ---
+
+sdkconfig
+sdkconfig.old
+sdkconfig.defaults
+
+--- IDE Files (VS Code) ---
+
+.vscode/
+.history/
+.devcontainer/
