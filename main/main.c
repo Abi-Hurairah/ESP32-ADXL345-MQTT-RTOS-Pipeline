@@ -18,6 +18,8 @@
 #include "station.h"
 #include "mqtt_client.h"
 
+
+#include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
@@ -111,7 +113,6 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 static void mqtt_app_start(void)
 {
     esp_mqtt_client_config_t mqtt_cfg = {
-        //.broker.address.uri = CONFIG_BROKER_URL,
         .broker.address.hostname = "192.168.200.22",
         .broker.address.port = 1883,
         .broker.address.transport = MQTT_TRANSPORT_OVER_TCP,
