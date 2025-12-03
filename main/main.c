@@ -14,115 +14,55 @@
 #include "esp_mac.h"
 #include "esp_wifi.h"
 #include "freertos/event_groups.h"
-
 #include "station.h"
+#include "freertos/queue.h"
 #include "mqtt_client.h"
-
-
-#include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_log.h"
 #include "adxl.h"
-
+#include "mqtt.h"
 
 static const char *TAG = "MAIN_APP";
 
-static void log_error_if_nonzero(const char *message, int error_code)
-{
-    if (error_code != 0) {
-        ESP_LOGE(TAG, "Last error %s: 0x%x", message, error_code);
-    }
-}
+extern QueueHandle_t xQueue_Sensordata = NULL;
 
 /*
- * @brief Event handler registered to receive MQTT events
- *
- *  This function is called by the MQTT client event loop.
- *
- * @param handler_args user data registered to the event.
- * @param base Event base for the handler(always MQTT Base in this example).
- * @param event_id The id for the received event.
- * @param event_data The data for the event, esp_mqtt_event_handle_t.
- */
-static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
+void read_sensor_task(void *pvParameters)
 {
-    ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%" PRIi32, base, event_id);
-    esp_mqtt_event_handle_t event = event_data;
-    esp_mqtt_client_handle_t client = event->client;
-    int msg_id;
-    ESP_LOGD(TAG, "free heap size is %" PRIu32 ", minimum %" PRIu32, esp_get_free_heap_size(),
-             esp_get_minimum_free_heap_size());
+    i2c_master_dev_handle_t dev_handle = (i2c_master_dev_handle_t)pvParameters;
+    uint8_t data_buffer[6];
+    int16_t x_axis = 0;
+    int16_t y_axis = 0;
+    int16_t z_axis = 0;
+    esp_err_t err;
+    BaseType_t xReturn;
 
-    switch ((esp_mqtt_event_id_t)event_id) {
-    case MQTT_EVENT_CONNECTED:
-        ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
+    xReturn = xQueueSend(xQueue_Sensordata, (void *)&x_axis, 10);
+    
+    while(1)
+    {
+        // 1. Attempt to read the data and capture the return status
+        err = adxl345_register_read(dev_handle, ADXL345_DATAX0_REG_ADDR, data_buffer, 6);
         
-        msg_id = esp_mqtt_client_publish(client, "test/response", "data_3", 0, 1, 1);
-        ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
-        
-        msg_id = esp_mqtt_client_subscribe(client, "test/response", 0);
-        ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
+        // 2. Check if the read was successful (err == ESP_OK)
+        if (err == ESP_OK) 
+        {
+        x_axis = (data_buffer[1] << 8) | data_buffer[0];
+        y_axis = (data_buffer[3] << 8) | data_buffer[2];
+        z_axis = (data_buffer[5] << 8) | data_buffer[4];
 
-        break;
+        ESP_LOGI(TAG, "X=%d, Y=%d, Z=%d", x_axis, y_axis, z_axis);
 
-    case MQTT_EVENT_DISCONNECTED:
-        ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
-        break;
-
-    case MQTT_EVENT_SUBSCRIBED:
-        ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d, reason code=0x%02x ", event->msg_id, (uint8_t)*event->data);
-        msg_id = esp_mqtt_client_publish(client, "topic/qos0", "data", 0, 0, 0);
-        ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
-        break;
-
-    case MQTT_EVENT_UNSUBSCRIBED:
-        ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
-        esp_mqtt_client_disconnect(client);
-        break;
-
-    case MQTT_EVENT_PUBLISHED:
-        ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
-        break;
-
-    case MQTT_EVENT_DATA:
-        ESP_LOGI(TAG, "MQTT_EVENT_DATA");
-
-        ESP_LOGI(TAG, "Received %.*s from TOPIC=%.*s",  event->data_len, event->data, event->topic_len, event->topic);
-        break;
-
-    case MQTT_EVENT_ERROR:
-        ESP_LOGI(TAG, "MQTT_EVENT_ERROR");
-        ESP_LOGI(TAG, "MQTT return code is %d", event->error_handle->connect_return_code);
-
-        if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
-            log_error_if_nonzero("reported from esp-tls", event->error_handle->esp_tls_last_esp_err);
-            log_error_if_nonzero("reported from tls stack", event->error_handle->esp_tls_stack_err);
-            log_error_if_nonzero("captured as transport's socket errno",  event->error_handle->esp_transport_sock_errno);
-            ESP_LOGI(TAG, "Last errno string (%s)", strerror(event->error_handle->esp_transport_sock_errno));
+        if (xReturn == pdTRUE)
+        {
+             printf("%d: Item Send SUCCESS\n", x_axis);
         }
-
-        break;
-
-    default:
-        ESP_LOGI(TAG, "Other event id:%d", event->event_id);
-        break;
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        }
     }
 }
+*/
 
-static void mqtt_app_start(void)
-{
-    esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.hostname = "192.168.200.22",
-        .broker.address.port = 1883,
-        .broker.address.transport = MQTT_TRANSPORT_OVER_TCP,
-        .network.disable_auto_reconnect = true,
-        .broker.verification.certificate = NULL, // Prevents mandatory TLS check
-    };
-    esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
-    esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
-    esp_mqtt_client_start(client);
-}
 
 void app_main(void)
 {
@@ -146,13 +86,27 @@ void app_main(void)
     esp_log_level_set("outbox", ESP_LOG_VERBOSE);
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    
+
+    xQueue_Sensordata = xQueueCreate(1, 10);
+
+    if (xQueue_Sensordata == NULL) 
+    {
+        ESP_LOGI(TAG, "Create FALSE\n");
+    }
+    else 
+    {
+        ESP_LOGI(TAG, "Create SUCCESS\n");
+    }
+
     ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
     wifi_init_sta();
+
+    // To Do: Inbetween code that checks for WiFi Connectivity. Perhaps the code below can be used somehow.
+    // xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
+
     mqtt_app_start();
 
     uint8_t data[1];
-    uint8_t data_buffer[6];
     i2c_master_bus_handle_t bus_handle;
     i2c_master_dev_handle_t dev_handle;
     i2c_master_init(&bus_handle, &dev_handle);
@@ -165,20 +119,7 @@ void app_main(void)
     ESP_LOGI(TAG, "Enabling measurement mode");
     ESP_ERROR_CHECK(adxl345_register_write_byte(dev_handle, ADXL345_POWER_CTL_REG_ADDR, 1 << ADXL345_MEASURE_BIT));
 
-    ESP_LOGI(TAG, "Reading 6 bytes of axis data...");
-    while (1) {
-        // 1. Attempt to read the data and capture the return status
-        esp_err_t err = adxl345_register_read(dev_handle, ADXL345_DATAX0_REG_ADDR, data_buffer, 6);
-
-        // 2. Check if the read was successful (err == ESP_OK)
-        if (err == ESP_OK) {
-            int16_t x_axis = (data_buffer[1] << 8) | data_buffer[0];
-            int16_t y_axis = (data_buffer[3] << 8) | data_buffer[2];
-            int16_t z_axis = (data_buffer[5] << 8) | data_buffer[4];
-
-            ESP_LOGI(TAG, "X=%d, Y=%d, Z=%d", x_axis, y_axis, z_axis);
-            vTaskDelay(pdMS_TO_TICKS(1000));
-        }
-    }
-    //vTaskDelete(NULL);
+    ESP_LOGI(TAG, "Reading 6 bytes of axis data... Now with task!");
+    xTaskCreate(read_sensor_task, "read_sensor_task", 4096, dev_handle, 6, NULL);
+    xTaskCreate(mqtt_publish_task, "mqtt_publish_task", 4096, NULL, 3, NULL);
 }

@@ -1,6 +1,6 @@
-#include "esp_err.h"          // Defines esp_err_t type.
-#include "driver/i2c_master.h"// Needed for i2c_master_dev_handle_t
-#include "driver/gpio.h"      // Needed for GPIO_NUM_xx
+#include "esp_err.h"          
+#include "driver/i2c_master.h"
+#include "driver/gpio.h"      
 
 #ifndef ADXL_H
 #define ADXL_H
@@ -20,5 +20,6 @@
 esp_err_t adxl345_register_read(i2c_master_dev_handle_t dev_handle, uint8_t reg_addr, uint8_t *data, size_t len);
 esp_err_t adxl345_register_write_byte(i2c_master_dev_handle_t dev_handle, uint8_t reg_addr, uint8_t data);
 void i2c_master_init(i2c_master_bus_handle_t *bus_handle, i2c_master_dev_handle_t *dev_handle);
+void read_sensor_task(void *pvParameters);
 
 #endif

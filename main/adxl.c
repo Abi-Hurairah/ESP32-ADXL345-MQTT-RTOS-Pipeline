@@ -1,6 +1,9 @@
 #include "adxl.h" 
+#include "system_handles.h"
 #include "esp_log.h" 
 #include "driver/i2c_master.h"
+
+static const char *TAG = "SENSOR_TASK";
 
 /**
  * @brief Read a sequence of bytes from a adxl345 sensor registers
@@ -40,4 +43,42 @@ void i2c_master_init(i2c_master_bus_handle_t *bus_handle, i2c_master_dev_handle_
         .scl_speed_hz = I2C_MASTER_FREQ_HZ,
     };
     ESP_ERROR_CHECK(i2c_master_bus_add_device(*bus_handle, &dev_config, dev_handle));
+}
+
+void read_sensor_task(void *pvParameters)
+{
+    i2c_master_dev_handle_t dev_handle = (i2c_master_dev_handle_t)pvParameters;
+    uint8_t data_buffer[6];
+    esp_err_t err;
+    BaseType_t xReturn;
+    sensor_data_t data_packet = {80};
+
+    while(1)
+    {
+        // 1. Attempt to read the data and capture the return status
+        err = adxl345_register_read(dev_handle, ADXL345_DATAX0_REG_ADDR, data_buffer, 6);
+
+        // 2. Check if the read was successful (err == ESP_OK)
+        if (err == ESP_OK) 
+        {
+        data_packet.x_axis = (data_buffer[1] << 8) | data_buffer[0];
+        data_packet.y_axis = (data_buffer[3] << 8) | data_buffer[2];
+        data_packet.z_axis = (data_buffer[5] << 8) | data_buffer[4];
+
+        ESP_LOGI(TAG, "X=%d, Y=%d, Z=%d", data_packet.x_axis, data_packet.y_axis, data_packet.z_axis);
+
+        xReturn = xQueueOverwrite(xQueue_Sensordata, (void *)&data_packet);
+        if (xReturn == pdTRUE)
+        {
+            printf("%d: Item Send SUCCESS\n", data_packet.x_axis);
+            printf("%d: Item Send SUCCESS\n", data_packet.y_axis);
+            printf("%d: Item Send SUCCESS\n", data_packet.z_axis);
+        }
+        else
+        {
+            ESP_LOGI(TAG, "Queue Full! Data discarded.");
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
 }
